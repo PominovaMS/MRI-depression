@@ -8,11 +8,6 @@ class Flatten(nn.Module):
         return input.view(input.size(0), -1)
     
 
-class GlobalAvgPool3D(nn.Module):
-    def forward(self, input):
-        return F.adaptive_avg_pool3d(input, (1, 1, 1))
-    
-
 class Identity(nn.Module):
     def __init__(self,):
         super(Identity, self).__init__()
@@ -89,9 +84,9 @@ class CNN(nn.Module):
         return self.model(x)
 
 
-class ConvRNN(nn.Module):
-    def __init__(self, input_shape=(64, 72, 48), n_outputs=1, 
-                 hidden_size=128, n_layers=2, n_fc_units_rnn=512, dropout=0, stride=1,
+class ConvLSTM(nn.Module):
+    def __init__(self, input_shape=(48, 64, 32), n_outputs=1, 
+                 hidden_size=128, n_layers=2, n_fc_units_rnn=128, dropout=0, stride=1,
                  n_filters=16, n_blocks=3, n_fc_units_cnn=128):
         super(self.__class__, self).__init__()
         self.model = CNN(input_shape, n_filters, n_blocks, stride, n_fc_units_cnn)
@@ -103,7 +98,6 @@ class ConvRNN(nn.Module):
         self.fc2 = nn.Linear(n_fc_units_rnn, n_outputs)
             
     def forward(self, x):
-        # ! No initial states
         n_objects, seq_length = x.size()[0:2]
         x = x.contiguous().view([n_objects * seq_length] + list(x.size()[2:]))
         x = self.model(x)
@@ -219,65 +213,6 @@ class BasicBlock(nn.Module):
         return out
 
 
-# old
-class VoxResNet_GAP(nn.Module):
-    def __init__(self, num_classes=2, n_filters=32, stride=2, n_blocks=3, input_shape=(152, 188, 152), dropout=0, n_fc_units=128):
-        super(self.__class__, self).__init__()
-        self.model = nn.Sequential()
-
-        self.model.add_module("conv3d_1", nn.Conv3d(1, n_filters, kernel_size=3, padding=1, stride=stride)) # n * (x/s) * (y/s) * (z/s)
-        self.model.add_module("batch_norm_1", nn.BatchNorm3d(n_filters))
-        self.model.add_module("activation_1", nn.ReLU(inplace=True))
-        self.model.add_module("conv3d_2", nn.Conv3d(n_filters, n_filters, kernel_size=3, padding=1)) # n * (x/s) * (y/s) * (z/s)
-        self.model.add_module("batch_norm_2", nn.BatchNorm3d(n_filters))
-        self.model.add_module("activation_2", nn.ReLU(inplace=True))
-
-#         1
-        self.model.add_module("conv3d_3", nn.Conv3d(n_filters, 2 * n_filters, kernel_size=3, padding=1, stride=2)) # 2n * (x/2s) * (y/2s) * (z/2s)
-        self.model.add_module("block_1", BasicBlock(2 * n_filters, 2 * n_filters))
-        self.model.add_module("block_2", BasicBlock(2 * n_filters, 2 * n_filters))
-        self.model.add_module("batch_norm_3", nn.BatchNorm3d(2 * n_filters))
-        self.model.add_module("activation_3", nn.ReLU(inplace=True))
-
-#         2
-        if n_blocks >= 2:
-            self.model.add_module("conv3d_4", nn.Conv3d(2 * n_filters, 2 * n_filters, kernel_size=3, padding=1, stride=2)) # 2n * (x/4s) * (y/4s) * (z/4s)
-            self.model.add_module("block_3", BasicBlock(2 * n_filters, 2 * n_filters))
-            self.model.add_module("block_4", BasicBlock(2 * n_filters, 2 * n_filters))
-            self.model.add_module("batch_norm_4", nn.BatchNorm3d(2 * n_filters))
-            self.model.add_module("activation_4", nn.ReLU(inplace=True))
-
-#         3
-        if n_blocks >= 3:
-            self.model.add_module("conv3d_5", nn.Conv3d(2 * n_filters, 4 * n_filters, kernel_size=3, padding=1, stride=2)) # 4n * (x/8s) * (y/8s) * (z/8s)
-            self.model.add_module("block_5", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("block_6", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("batch_norm_5", nn.BatchNorm3d(4 * n_filters))
-            self.model.add_module("activation_5", nn.ReLU(inplace=True))
-
-#         4
-        if n_blocks >= 4:
-            self.model.add_module("conv3d_6", nn.Conv3d(4 * n_filters, 4 * n_filters, kernel_size=3, padding=1, stride=2)) # 4n * (x/16s) * (y/16s) * (z/16s)
-            self.model.add_module("block_7", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("block_8", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("batch_norm_6", nn.BatchNorm3d(4 * n_filters))
-            self.model.add_module("activation_6", nn.ReLU(inplace=True))
-        
-        self.model.add_module("global_avg_pool_1", GlobalAvgPool3D())
-        self.model.add_module("flatten_1", Flatten())
-        
-        if n_blocks == 3 or n_blocks == 4:
-            self.model.add_module("fully_conn_1", nn.Linear(4 * n_filters, n_fc_units))
-        self.model.add_module("activation_6", nn.ReLU(inplace=True))
-        self.model.add_module("dropout_1", nn.Dropout(dropout))
-
-        self.model.add_module("fully_conn_2", nn.Linear(n_fc_units, num_classes))
-
-            
-    def forward(self, x):
-        return self.model(x)
-
-
 class VoxResNet(nn.Module):
     def __init__(self, input_shape=(128, 128, 128), num_classes=2, n_filters=32, stride=2, n_blocks=3, dropout=0, n_fc_units=128):
         super(self.__class__, self).__init__()
@@ -321,10 +256,12 @@ class VoxResNet(nn.Module):
             self.model.add_module("batch_norm_6", nn.BatchNorm3d(4 * n_filters))
             self.model.add_module("activation_6", nn.ReLU(inplace=True))
 
-#         self.model.add_module("max_pool3d_1", nn.MaxPool3d(kernel_size=3)) # (b/2)n * (x/(2^b)sk) * (y/(2^b)sk) * (z/(2^b)sk) ?
+#         self.model.add_module("max_pool3d_1", nn.MaxPool3d(kernel_size=3)) # (b/2)n * (x/(2^b)sk) * (y/(2^b)sk) * (z/(2^b)sk) 
         
         self.model.add_module("flatten_1", Flatten())
-#         self.model.add_module("fully_conn_1", nn.Linear(2 ** ((n_blocks + 1) // 2) * n_filters * np.prod(np.array(input_shape) // (stride * 2 ** n_blocks)), n_fc_units))
+        
+        if n_blocks == 2:
+            self.model.add_module("fully_conn_1", nn.Linear(4 * n_filters * (input_shape[0] // (4 * stride)) * (input_shape[1] // (4 * stride)) * (input_shape[2] // (4 * stride)), n_fc_units))
         if n_blocks == 3:
             self.model.add_module("fully_conn_1", nn.Linear(4 * n_filters * (input_shape[0] // (8 * stride)) * (input_shape[1] // (8 * stride)) * (input_shape[2] // (8 * stride)), n_fc_units))
         if n_blocks == 4:
@@ -337,71 +274,3 @@ class VoxResNet(nn.Module):
             
     def forward(self, x):
         return self.model(x)
-
-
-# old    
-class VoxResNet2(nn.Module):
-    def __init__(self, num_classes=2, n_filters=8, stride=2, n_blocks=3, input_shape=(152, 188, 152), dropout_conv=0, dropout=0, n_flatten_units=None, n_fc_units=128):
-        super(self.__class__, self).__init__()
-        self.model = nn.Sequential()
-
-        self.model.add_module("conv3d_1", nn.Conv3d(1, n_filters, kernel_size=3, padding=1, stride=stride)) # n * (x/s) * (y/s) * (z/s)
-        self.model.add_module("batch_norm_1", nn.BatchNorm3d(n_filters))
-        self.model.add_module("activation_1", nn.ReLU(inplace=True))
-        self.model.add_module("conv3d_2", nn.Conv3d(n_filters, n_filters, kernel_size=3, padding=1)) # n * (x/s) * (y/s) * (z/s)
-        self.model.add_module("batch_norm_2", nn.BatchNorm3d(n_filters))
-        self.model.add_module("activation_2", nn.ReLU(inplace=True))
-
-#         1
-        self.model.add_module("conv3d_3", nn.Conv3d(n_filters, 2 * n_filters, kernel_size=3, padding=1, stride=2)) # 2n * (x/2s) * (y/2s) * (z/2s)
-        self.model.add_module("block_1", BasicBlock(2 * n_filters, 2 * n_filters))
-        self.model.add_module("block_2", BasicBlock(2 * n_filters, 2 * n_filters))
-        self.model.add_module("batch_norm_3", nn.BatchNorm3d(2 * n_filters))
-        self.model.add_module("activation_3", nn.ReLU(inplace=True))
-        self.model.add_module("dropout_conv_1", nn.Dropout(dropout_conv))
-
-#         2
-        if n_blocks >= 2:
-            self.model.add_module("conv3d_4", nn.Conv3d(2 * n_filters, 4 * n_filters, kernel_size=3, padding=1, stride=2)) # 4n * (x/4s) * (y/4s) * (z/4s)
-            self.model.add_module("block_3", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("block_4", BasicBlock(4 * n_filters, 4 * n_filters))
-            self.model.add_module("batch_norm_4", nn.BatchNorm3d(4 * n_filters))
-            self.model.add_module("activation_4", nn.ReLU(inplace=True))
-            self.model.add_module("dropout_conv_2", nn.Dropout(dropout_conv))
-
-#         3
-        if n_blocks >= 3:
-            self.model.add_module("conv3d_5", nn.Conv3d(4 * n_filters, 8 * n_filters, kernel_size=3, padding=1, stride=2)) # 8n * (x/8s) * (y/8s) * (z/8s)
-            self.model.add_module("block_5", BasicBlock(8 * n_filters, 8 * n_filters))
-            self.model.add_module("block_6", BasicBlock(8 * n_filters, 8 * n_filters))
-            self.model.add_module("batch_norm_5", nn.BatchNorm3d(8 * n_filters))
-            self.model.add_module("activation_5", nn.ReLU(inplace=True))
-            self.model.add_module("dropout_conv_3", nn.Dropout(dropout_conv))
-
-#         4
-        if n_blocks >= 4:
-            self.model.add_module("conv3d_6", nn.Conv3d(8 * n_filters, 16 * n_filters, kernel_size=3, padding=1, stride=2)) # 16n * (x/16s) * (y/16s) * (z/16s)
-            self.model.add_module("block_7", BasicBlock(16 * n_filters, 16 * n_filters))
-            self.model.add_module("block_8", BasicBlock(16 * n_filters, 16 * n_filters))
-            self.model.add_module("batch_norm_6", nn.BatchNorm3d(16 * n_filters))
-            self.model.add_module("activation_6", nn.ReLU(inplace=True))
-            self.model.add_module("dropout_conv_4", nn.Dropout(dropout_conv))
-
-#         self.model.add_module("max_pool3d_1", nn.MaxPool3d(kernel_size=3)) # (b/2)n * (x/(2^b)sk) * (y/(2^b)sk) * (z/(2^b)sk) ?     
-        self.model.add_module("flatten_1", Flatten())
-
-        if n_flatten_units is None:
-            n_flatten_units = 2 ** ((n_blocks + 1) // 2) * n_filters * np.prod(np.array(input_shape) // (stride * 2 ** n_blocks))
-
-        self.model.add_module("fully_conn_1", nn.Linear(n_flatten_units, n_fc_units))
-        self.model.add_module("activation_6", nn.ReLU(inplace=True))
-        self.model.add_module("dropout_1", nn.Dropout(dropout))
-
-        self.model.add_module("fully_conn_2", nn.Linear(n_fc_units, num_classes))
-
-
-    def forward(self, x):
-        return self.model(x)
-
-    
-    
